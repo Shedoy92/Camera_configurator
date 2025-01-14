@@ -4,6 +4,7 @@ import re
 import webbrowser
 import netifaces as ni
 import subprocess
+import logging
 from flask import Flask, request, g, redirect, url_for, render_template, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 
@@ -16,6 +17,14 @@ app.config.update(dict(
     SECRET_KEY="ararablyat"
 ))
 app.config.from_envvar('USERS_SETTINGS', silent=True)
+
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    handlers=[
+                        logging.FileHandler('app.log'),
+                        logging.StreamHandler()
+                    ])
+logger=logging.getLogger(__name__)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -66,6 +75,7 @@ def login():
         username = request.form['username']
         password = request.form['password']
 
+        logger.info(f'Login attempt for user: {username}')
         db = get_db()
         cur = db.execute('select id, username, password, user_group from users where username = ?', [username])
         user_data = cur.fetchone()
@@ -73,18 +83,21 @@ def login():
         if user_data and user_data['password'] == password:
             user = User(user_data['id'], user_data['username'], user_data['password'], user_data['user_group'])
             login_user(user)
+            logger.info(f'User {username} logged in')
             flash('You were logged in')
             return redirect(url_for('show_cameras'))
         else:
+            logger.warning(f'Invalid login attempt for user: {username}')
             error = 'Invalid username or password'
     return render_template('login.html', error=error)
 
 @app.route('/logout')
 @login_required
 def logout():
+    logger.info(f'User {current_user.username} logged out')
     logout_user()
     flash('You were logged out')
-    return redirect(url_for('show_cameras'))
+    return redirect(url_for('login'))
 
 @app.route('/')
 @login_required
@@ -127,6 +140,7 @@ def is_valid_ip(ip):
 @login_required
 def add_camera():
     if current_user.user_group != 'admin':
+        logger.warning(f'Access denied for user {current_user.username} to add camera')
         flash('Access denied.')
         return redirect(url_for('show_cameras'))
     else:
@@ -155,6 +169,7 @@ def add_camera():
                 return redirect(url_for('add_camera', id=id))
 
             if camera:
+                logger.debug(f'Updating existing camera with ID: {id}')
                 db.execute(
                     'UPDATE ip_cameras SET name = ?, description = ?, local_ip = ?, network_mask = ?, service_port = ?, camera_group = ?, external_iface = ?, internal_iface = ? WHERE id = ?',
                     [name, description, local_ip, network_mask, service_port, camera_group, external_iface,
@@ -162,6 +177,7 @@ def add_camera():
                 db.commit()
                 current_port=db.execute('SELECT access_port FROM external_access WHERE camera_id=?', [camera['id']]).fetchone()[0]
 
+                logger.debug(f'Updating iptables rules for camera with ID: {id}')
                 external_ip = get_interface_ip(external_iface)
                 internal_ip = get_interface_ip(internal_iface)
                 commands = [
@@ -171,9 +187,11 @@ def add_camera():
                 for command in commands:
                     execute_command(command)
 
+                logger.debug(f'Removing odl iptables rules for camera with ID: {id}')
                 remove_iptables_rules(camera['external_iface'], camera['internal_iface'], camera['local_ip'],
                                       camera['service_port'], current_port)
             else:
+                logger.debug('Adding new camera')
                 db.execute(
                     'INSERT INTO ip_cameras (name, description, local_ip, network_mask, service_port, camera_group, external_iface, internal_iface) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                     [name, description, local_ip, network_mask, service_port, camera_group, external_iface,
@@ -199,6 +217,7 @@ def add_camera():
 
                     db.commit()
 
+                logger.debug(f'Creating iptables rules for new camera')
                 external_ip = get_interface_ip(external_iface)
                 internal_ip = get_interface_ip(internal_iface)
 
@@ -213,7 +232,12 @@ def add_camera():
                 for command in commands:
                     execute_command(command)
 
-            flash('Camera was successfully updated' if camera else 'New camera was successfully added')
+            if camera:
+                logger.info(f'Camera with id {id} was successfully updated')
+                flash('Camera was successfully updated')
+            else:
+                logger.info('New camera was successfully added')
+                flash('New camera was successfully added')
             return redirect(url_for('show_cameras'))
 
         return render_template('add_camera.html', camera=camera, group=current_user.user_group, interfaces=interfaces)
@@ -262,9 +286,11 @@ def get_network_interfaces():
 @login_required
 def delete_camera(id):
     if current_user.user_group != 'admin':
+        logger.warning(f'Access denied for user {current_user.username} to delete camera')
         flash('Access denied.')
         return redirect(url_for('show_cameras'))
     else:
+        logger.debug(f'Attempting to remove the camera {id}')
         db = get_db()
         camera = db.execute(
             'SELECT * FROM ip_cameras WHERE id = ?', (id,)).fetchone()
@@ -282,6 +308,7 @@ def delete_camera(id):
         db.execute('DELETE FROM ip_cameras WHERE id = ?', (id,))
         db.execute('DELETE FROM external_access WHERE camera_id = ?', (id,))
         db.commit()
+        logger.info(f'Camera was successfully deleted')
         flash('Camera was successfully deleted')
         return redirect(url_for('show_cameras'))
 
@@ -308,6 +335,7 @@ def open_camera(id):
     camera_group = db.execute('SELECT camera_group FROM ip_cameras WHERE id=?',(id,)).fetchone()
 
     if camera_group != current_user.user_group:
+        logger.warning(f'Access denied for user {current_user.username} to open link camera {id}')
         flash('Access denied')
         return redirect(url_for('show_cameras'))
 
@@ -322,6 +350,91 @@ def open_camera(id):
 
     return redirect(url_for('show_cameras'))
 
+@app.route('/admin_panel', methods = ['GET', 'POST'])
+@login_required
+def admin_panel():
+    if current_user.user_group != 'admin':
+        logger.warning(f'Access denied for user {current_user.username} to admin panel')
+        flash('Access denied')
+        return redirect(url_for('show_cameras'))
+
+    return render_template('admin_panel.html')
+
+@app.route('/admin_user_manager', methods=['GET', 'POST'])
+@login_required
+def admin_user_manager():
+    if current_user.user_group != 'admin':
+        logger.warning(f'Access denied for user {current_user.username} to user manager')
+        flash('Access denied')
+        return redirect(url_for('show_cameras'))
+
+    db = get_db()
+    users_data = db.execute('SELECT id, username, user_group, last_login FROM users').fetchall()
+
+    return render_template('admin_user_manager.html', users_data=users_data)
+
+@app.route('/add_user', methods=['GET', 'POST'])
+@login_required
+def add_user():
+    if current_user.user_group != 'admin':
+        logger.warning(f'Access denied for user {current_user.username} to add user')
+        flash('Access denied')
+        return redirect(url_for('show_cameras'))
+    else:
+        id = request.args.get('id')
+        user=None
+        db = get_db()
+
+        if id:
+            user=db.execute('SELECT id, username, user_group FROM users WHERE id =?', (id,)).fetchone()
+
+        if request.method == 'POST':
+            username = request.form['username']
+            user_group = request.form['user_group']
+            password = request.form['password']
+
+            if user:
+                try:
+                    db.execute('UPDATE users SET username = ?, user_group = ?, password = ? WHERE id=?',
+                               [username, user_group, password, id])
+                    db.commit()
+                    logger.info(f'User {username} updated successfully.')
+                    flash(f'User {username} updated successfully.')
+                    return redirect(url_for('admin_user_manager'))
+                except sqlite3.IntegrityError:
+                    logger.error(f'User with username {username} already exists')
+                    error_message=f'User with username {username} already exists'
+                    return render_template('add_user.html', error=error_message)
+            else:
+                try:
+                    db.execute('INSERT INTO users (username, password, user_group) VALUES (?,?,?)',
+                               (username, password, user_group))
+                    db.commit()
+                    logger.info(f'User {username} added successfully.')
+                    flash(f'User {username} added successfully')
+                    return redirect(url_for('admin_user_manager'))
+                except sqlite3.IntegrityError:
+                    logger.error(f'User {username} already exists.')
+                    error_message = f'User {username} already exists.'
+                    return render_template('add_user.html', error=error_message)
+
+    return render_template('add_user.html', user=user)
+
+@app.route('/delete_user/<int:id>', methods=['GET', 'POST'])
+@login_required
+def delete_user(id):
+    if current_user.user_group != 'admin':
+        logger.warning(f'Access denied for user {current_user.username} to delete user')
+        flash('Access denied.')
+        return redirect(url_for('show_cameras'))
+    else:
+        logger.debug(f'Attempting to remove user {id}')
+        db = get_db()
+        db.execute('DELETE FROM users WHERE id = ?', (id,))
+        db.commit()
+        logger.debug(f'User {id} was successfully deleted')
+        flash('User was successfully deleted')
+        return redirect(url_for('admin_user_manager'))
 
 if __name__ == '__main__':
     init_db()

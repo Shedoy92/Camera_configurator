@@ -1,8 +1,9 @@
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL,
+    username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL,
-    user_group TEXT NOT NULL
+    user_group TEXT NOT NULL,
+    last_login TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ip_cameras (
