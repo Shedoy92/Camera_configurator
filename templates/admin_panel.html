@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+
+{% block body %}
+  <h1>Admin Panel</h1>
+  <div style="display: flex; align-items: flex-start;">
+    <textarea rows="10" cols="80">{{ server_logs }}</textarea>
+    <div style="margin-left: 20px; padding-top: 5px;">
+      <form method="post" action="{{ url_for('admin_user_manager') }}">
+        <button type="submit">User manager</button>
+      </form>
+    </div>
+  </div>
+
+  <input type="checkbox" id="error" name="error">
+  <label for="error">Error</label><br>
+  <input type="checkbox" id="warning" name="warning">
+  <label for="warning">Warning</label><br>
+  <input type="checkbox" id="info" name="info">
+  <label for="info">Info</label><br>
+  <input type="checkbox" id="debug" name="debug">
+  <label for="debug">Debug</label><br>
+
+{% endblock %}

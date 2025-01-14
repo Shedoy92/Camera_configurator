@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+
+{% block body %}
+  <h2>{{ 'Edit User' if user else 'Add User' }}</h2>
+
+  {% if error %}
+    <p style="color: red;">{{ error }}</p>
+  {% endif %}
+
+  <form method="post">
+    {% if user %}
+      <input type=hidden name=id value="{{ user.id }}">
+    {% endif %}
+
+    <dl>
+      <dt>Username:
+      <dd><input type=text size=30 name=username required value="{{ user.username if user else '' }}">
+
+      <dt>User Group:
+      <dd><input type=text size=30 name=user_group required value="{{ user.user_group if user else '' }}">
+
+      <dt>Password:
+      <dd><input type=password size=30 name=password required>
+    </dl>
+
+    <div class="buttons">
+      {% if user %}
+        <button type=submit value='Update User'>Save Changes</button>
+        <button type=submit formaction="{{ url_for('delete_user', id=user.id) }}" onclick="return confirm('Are you sure you want to delete this user?')">Delete User</button>
+      {% else %}
+        <input type=submit value='Add User'>
+      {% endif %}
+    </div>
+  </form>
+
+{% endblock %}
