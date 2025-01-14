@@ -1,0 +1,61 @@
+body            { font-family: sans-serif; background: #eee; }
+a, h1, h2       { color: #377ba8; }
+h1, h2          { font-family: 'Verdana', sans-serif; margin: 0; }
+h1              { border-bottom: 2px solid #eee; }
+h2              { font-size: 1.2em; }
+
+.page           { margin: 1em auto; width: 93em; border: 3px solid #ccc;
+                  padding: 1em; background: white; }
+.entries        { list-style: none; margin: 0; padding: 0; }
+.entries li     { margin: 1.8em 1.2em; }
+.entries li h2, .entries li p {
+                  margin-left: -1em;
+                  display: block;
+}
+.add-entry      { font-size: 0.9em; border-bottom: 1px solid #ccc; }
+.add-entry dl   { font-weight: bold; }
+.metanav        { text-align: right; font-size: 1em; padding: 0.5em;
+                  margin-bottom: 1em; background: #fafafa; }
+.flash          { background: #cee5f5; padding: 0.5em;
+                  border: 1px solid #aacbe2; }
+.error          { background: #f0d6d6; padding: 0.5em; }
+
+form {
+                  display: flex;
+                  flex-direction: column;
+}
+
+.cameras th, .cameras td {
+    padding: 10px;
+    text-align: left;
+}
+
+dl dt, dl dd { margin-bottom: 0.8em; }
+: #f0d6d6; padding: 0.5em; }
+
+table.cameras {
+                  width: 70%;
+                  border-collapse: collapse;
+}
+
+th, td {
+                  padding: 8px;
+                  text-align: left;
+                  border-bottom: 1px solid #ddd;
+}
+
+th {
+                  background-color: #f2f2f2;
+                  color: black;
+}
+
+a {
+                  text-decoration: none;
+                  color: blue;
+}
+
+a:hover { text-decoration: underline; }
+
+.sorted {
+                   background-color: lightblue;
+}

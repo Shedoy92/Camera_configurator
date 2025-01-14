@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block body %}
+  <h2>{{ 'Edit Camera' if camera else 'Adding Camera' }}</h2>
+  <form action="{{ url_for('add_camera', id=camera.id if camera else None) }}" method=post class=add-camera>
+    {% if camera %}
+      <input type=hidden name=id value="{{ camera.id }}">
+    {% endif %}
+    <dl>
+      <dt>Name:
+      <dd><input type=text size=30 name=name required value="{{ camera.name if camera else '' }}">
+
+      <dt>Description:
+      <dd><textarea placeholder="Optional" name=description rows=5 cols=40 maxlength="300">{{ camera.description if camera else '' }}</textarea>
+
+      <dt>Local IP:
+      <dd><input placeholder="e.g. 192.168.1.1" type=text size=30 name=local_ip required value="{{ camera.local_ip if camera else '' }}">
+
+      <dt>Network Mask:
+      <dd><input placeholder="e.g. 24" type=text size=30 name=network_mask required value="{{ camera.network_mask if camera else '' }}">
+
+      <dt>Service Port:
+      <dd><input type=number min=1 max=65535 name=service_port required value="{{ camera.service_port if camera else '' }}">
+
+      <dt>User Group:
+      <dd><input type=text size=30 name=camera_group required value="{{ camera.camera_group if camera else '' }}">
+
+      <dt>External Interface:
+      <dd>
+        <select name="external_iface" required>
+          {% for iface in interfaces %}
+            <option value="{{ iface }}" {{ 'selected' if iface == (camera.external_iface if camera else '') else '' }}>
+              {{ iface }}
+            </option>
+          {% endfor %}
+        </select>
+      </dd>
+
+      <dt>Internal Interface:
+      <dd>
+        <select name="internal_iface" required>
+          {% for iface in interfaces %}
+            <option value="{{ iface }}" {{ 'selected' if iface == (camera.internal_iface if camera else '') else '' }}>
+              {{ iface }}
+            </option>
+          {% endfor %}
+        </select>
+      </dd>
+    </dl>
+    <div class="buttons">
+      {% if camera and group == 'admin' %}
+        <button type=submit value='Update Camera'>Save Changes</button>
+        <button type=submit formaction="{{ url_for('delete_camera', id=camera.id) }}" onclick="return confirm('Are you sure you want to delete this camera?')">Delete Camera</button>
+      {% elif not camera and group == 'admin' %}
+        <input type=submit value='Add Camera'>
+      {% endif %}
+    </div>
+  </form>
+{% endblock %}

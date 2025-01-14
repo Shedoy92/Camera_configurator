@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+{% block body %}
+  {% if current_user.is_authenticated and group == 'admin' %}
+    <a href="{{ url_for('add_camera') }}">Add camera</a>
+  {% endif %}
+  <table class=cameras id="sortableTable">
+    <tr>
+      <th onclick="sortTable(0)">ID</th>
+      <th onclick="sortTable(1)">Name</th>
+      <th onclick="sortTable(2)">Description</th>
+      <th onclick="sortTable(3)">Local IP</th>
+      <th onclick="sortTable(4)">Network Mask</th>
+      <th onclick="sortTable(5)">Service Port</th>
+      <th onclick="sortTable(6)">User Group</th>
+      <th onclick="sortTable(7)">External IP</th>
+      <th onclick="sortTable(8)">Access Port</th>
+      <th>Actions</th>
+    </tr>
+    {% for entry in cameras if group == entry.camera_group or group == 'admin' %}
+    <tr>
+      <td>{{ entry.id }}</td>
+      <td>{{ entry.name }}</td>
+      <td>{{ entry.description|safe }}</td>
+      <td>{{ entry.local_ip }}</td>
+      <td>{{ entry.network_mask }}</td>
+      <td>{{ entry.service_port }}</td>
+      <td>{{ entry.camera_group }}</td>
+      <td>{{ entry.external_ip}}</td>
+      <td>{{ entry.access_port}}</td>
+      <td>
+        {% if current_user.is_authenticated %}
+          {% if group =='admin' %}
+            <a href="{{ url_for('add_camera', id=entry.id) }}">Edit</a> |
+            <a href="{{ url_for('delete_camera', id=entry.id) }}" onclick="return confirm('Are you sure you want to delete this camera?')">Delete</a> |
+          {% endif %}
+          <a href="{{ url_for('open_camera', id=entry.id) }}">Open link</a>
+          <input type="text" value="http://{{ entry.external_ip }}:{{ entry.access_port }}" readonly style="width: 200px;" onclick="this.select()">
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan=10><em>No cameras here so far</em></td></tr>
+    {% endfor %}
+  </table>
+
+  <script>
+    let sortedColumnIndex = -1;
+
+    function sortTable(columnIndex) {
+      var table, rows, switching, i, x, y, shouldSwitch;
+      table = document.getElementById("sortableTable");
+      switching = true;
+
+      const headers = table.rows[0].getElementsByTagName("TH");
+      for (let j = 0; j < headers.length; j++) {
+        headers[j].classList.remove('sorted');
+      }
+
+      while (switching) {
+        switching = false;
+        rows = table.rows;
+        for (i = 1; i < (rows.length - 1); i++) {
+          shouldSwitch = false;
+          x = rows[i].getElementsByTagName("TD")[columnIndex];
+          y = rows[i + 1].getElementsByTagName("TD")[columnIndex];
+          if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
+            shouldSwitch = true;
+            break;
+          }
+        }
+        if (shouldSwitch) {
+          rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+          switching = true;
+        }
+      }
+
+      table.rows[0].getElementsByTagName("TH")[columnIndex].classList.add('sorted');
+      sortedColumnIndex = columnIndex;
+    }
+
+    window.onload = function() {
+      sortTable(0);
+    }
+  </script>
+{% endblock %}
