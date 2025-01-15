@@ -1,3 +1,4 @@
+import datetime
 import sqlite3
 import os
 import re
@@ -7,6 +8,7 @@ import subprocess
 import logging
 from flask import Flask, request, g, redirect, url_for, render_template, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.config.from_object(__name__)
@@ -17,6 +19,7 @@ app.config.update(dict(
     SECRET_KEY="ararablyat"
 ))
 app.config.from_envvar('USERS_SETTINGS', silent=True)
+
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -80,10 +83,17 @@ def login():
         cur = db.execute('select id, username, password, user_group from users where username = ?', [username])
         user_data = cur.fetchone()
 
-        if user_data and user_data['password'] == password:
+        if user_data and check_password_hash(user_data['password'], password):
             user = User(user_data['id'], user_data['username'], user_data['password'], user_data['user_group'])
             login_user(user)
             logger.info(f'User {username} logged in')
+
+            current_time = datetime.datetime.now()
+            ip_address = request.remote_addr
+            db.execute('UPDATE users SET last_login=?, last_ip=? WHERE id=?',
+                       [current_time, ip_address, user_data['id']])
+            db.commit()
+
             flash('You were logged in')
             return redirect(url_for('show_cameras'))
         else:
@@ -187,7 +197,7 @@ def add_camera():
                 for command in commands:
                     execute_command(command)
 
-                logger.debug(f'Removing odl iptables rules for camera with ID: {id}')
+                logger.debug(f'Removing old iptables rules for camera with ID: {id}')
                 remove_iptables_rules(camera['external_iface'], camera['internal_iface'], camera['local_ip'],
                                       camera['service_port'], current_port)
             else:
@@ -350,16 +360,6 @@ def open_camera(id):
 
     return redirect(url_for('show_cameras'))
 
-@app.route('/admin_panel', methods = ['GET', 'POST'])
-@login_required
-def admin_panel():
-    if current_user.user_group != 'admin':
-        logger.warning(f'Access denied for user {current_user.username} to admin panel')
-        flash('Access denied')
-        return redirect(url_for('show_cameras'))
-
-    return render_template('admin_panel.html')
-
 @app.route('/admin_user_manager', methods=['GET', 'POST'])
 @login_required
 def admin_user_manager():
@@ -369,7 +369,7 @@ def admin_user_manager():
         return redirect(url_for('show_cameras'))
 
     db = get_db()
-    users_data = db.execute('SELECT id, username, user_group, last_login FROM users').fetchall()
+    users_data = db.execute('SELECT id, username, user_group, last_login, last_ip FROM users').fetchall()
 
     return render_template('admin_user_manager.html', users_data=users_data)
 
@@ -395,8 +395,9 @@ def add_user():
 
             if user:
                 try:
+                    hashed_password=generate_password_hash(password)
                     db.execute('UPDATE users SET username = ?, user_group = ?, password = ? WHERE id=?',
-                               [username, user_group, password, id])
+                               [username, user_group, hashed_password, id])
                     db.commit()
                     logger.info(f'User {username} updated successfully.')
                     flash(f'User {username} updated successfully.')
@@ -407,8 +408,9 @@ def add_user():
                     return render_template('add_user.html', error=error_message)
             else:
                 try:
+                    hashed_password = generate_password_hash(password)
                     db.execute('INSERT INTO users (username, password, user_group) VALUES (?,?,?)',
-                               (username, password, user_group))
+                               (username, hashed_password, user_group))
                     db.commit()
                     logger.info(f'User {username} added successfully.')
                     flash(f'User {username} added successfully')

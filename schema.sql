@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL,
     user_group TEXT NOT NULL,
-    last_login TEXT
+    last_login TEXT,
+    last_ip TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ip_cameras (

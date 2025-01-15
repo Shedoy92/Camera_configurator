@@ -3,14 +3,9 @@
 {% block body %}
   <h1 style="display: flex; align-items: center;">
     User Manager
-    <form method="get" action="{{ url_for('admin_panel') }}" style="margin-left: auto;">
-      <button type="submit" style="padding: 0.5em 1em; background: #eee; border: none; cursor: pointer;">Back</button>
-    </form>
   </h1>
 
-  <a href="{{ url_for('add_user') }}" style="text-decoration: none;">
-    <button type="button" style="padding: 0.5em 1em; background: #eee; border: none; cursor: pointer;">Add User</button>
-  </a>
+  <a href="{{ url_for('add_user') }}">Add user</a>
 
   <table class="cameras">
     <thead>
@@ -18,7 +13,7 @@
         <th>Username</th>
         <th>User Group</th>
         <th>Last Login</th>
-        <th>Status</th>
+        <th>Last IP</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -28,6 +23,7 @@
           <td>{{ user.username }}</td>
           <td>{{ user.user_group }}</td>
           <td>{{ user.last_login }}</td>
+          <td>{{ user.last_ip }}</td>
           <td>
             <a href="{{ url_for('add_user', id=user.id) }}">Edit</a> |
             <a href="{{ url_for('delete_user', id=user.id) }}"

@@ -1,8 +1,8 @@
 {% extends "layout.html" %}
 {% block body %}
   {% if current_user.is_authenticated and group == 'admin' %}
-    <a href="{{ url_for('add_camera') }}">Add camera</a>
-    <a href="{{ url_for('admin_panel') }}">Admin panel</a>
+    <a href="{{ url_for('add_camera') }}">Add camera</a> |
+    <a href="{{ url_for('admin_user_manager') }}">User manager</a>
   {% endif %}
   <table class=cameras id="sortableTable">
     <tr>
@@ -21,7 +21,7 @@
     <tr>
       <td>{{ entry.id }}</td>
       <td>{{ entry.name }}</td>
-      <td>{{ entry.description|safe }}</td>
+      <td style="white-space: pre-line;">{{ entry.description|safe }}</td>
       <td>{{ entry.local_ip }}</td>
       <td>{{ entry.network_mask }}</td>
       <td>{{ entry.service_port }}</td>
