@@ -1,11 +1,9 @@
 import datetime
 import sqlite3
 import os
-import re
 import webbrowser
-import netifaces as ni
-import subprocess
 import logging
+import func
 from flask import Flask, request, g, redirect, url_for, render_template, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -32,6 +30,8 @@ logger=logging.getLogger(__name__)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+firewall_conf="/etc/iptables/firewall.conf"
 
 class User(UserMixin):
     def __init__(self, id, username, password, user_group):
@@ -134,18 +134,6 @@ def show_cameras():
     cameras = cur.fetchall()
     return render_template('show_cameras.html', cameras=cameras, group=current_user.user_group)
 
-def is_valid_ip(ip):
-    pattern = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
-    if not pattern.match(ip):
-        return False
-
-    octets = ip.split('.')
-    for octet in octets:
-        if int(octet) > 255:
-            return False
-
-    return True
-
 @app.route('/add_camera', methods=['GET', 'POST'])
 @login_required
 def add_camera():
@@ -158,7 +146,7 @@ def add_camera():
         camera = None
         db = get_db()
 
-        interfaces = get_network_interfaces()
+        interfaces = func.get_network_interfaces()
 
         if id:
             camera = db.execute(
@@ -174,7 +162,7 @@ def add_camera():
             external_iface = request.form['external_iface']
             internal_iface = request.form['internal_iface']
 
-            if not is_valid_ip(local_ip):
+            if not func.is_valid_ip(local_ip):
                 flash('Invalid IP address format')
                 return redirect(url_for('add_camera', id=id))
 
@@ -188,17 +176,18 @@ def add_camera():
                 current_port=db.execute('SELECT access_port FROM external_access WHERE camera_id=?', [camera['id']]).fetchone()[0]
 
                 logger.debug(f'Updating iptables rules for camera with ID: {id}')
-                external_ip = get_interface_ip(external_iface)
-                internal_ip = get_interface_ip(internal_iface)
+                external_ip = func.get_interface_ip(external_iface)
+                internal_ip = func.get_interface_ip(internal_iface)
                 commands = [
                     f"sudo iptables -t nat -A PREROUTING -d {external_ip} -p tcp --dport {current_port} -j DNAT --to-destination {local_ip}:{service_port}",
-                    f"sudo iptables -t nat -A POSTROUTING -d {local_ip} -p tcp --dport {service_port} -j SNAT --to-source {internal_ip}"
+                    f"sudo iptables -t nat -A POSTROUTING -d {local_ip} -p tcp --dport {service_port} -j SNAT --to-source {internal_ip}",
+                    f"sudo iptables-save >{firewall_conf}"
                 ]
                 for command in commands:
-                    execute_command(command)
+                    func.execute_command(command)
 
                 logger.debug(f'Removing old iptables rules for camera with ID: {id}')
-                remove_iptables_rules(camera['external_iface'], camera['internal_iface'], camera['local_ip'],
+                func.remove_iptables_rules(camera['external_iface'], camera['internal_iface'], camera['local_ip'],
                                       camera['service_port'], current_port)
             else:
                 logger.debug('Adding new camera')
@@ -219,7 +208,7 @@ def add_camera():
                         if not check_port.fetchone():
                             db.execute(
                                 'INSERT INTO external_access (camera_id, external_ip, access_port) VALUES (?, ?, ?)',
-                                [camera_id, get_interface_ip(external_iface), current_port]
+                                [camera_id, func.get_interface_ip(external_iface), current_port]
                             )
                             port_assigned = True
                         else:
@@ -228,19 +217,20 @@ def add_camera():
                     db.commit()
 
                 logger.debug(f'Creating iptables rules for new camera')
-                external_ip = get_interface_ip(external_iface)
-                internal_ip = get_interface_ip(internal_iface)
+                external_ip = func.get_interface_ip(external_iface)
+                internal_ip = func.get_interface_ip(internal_iface)
 
                 commands = [
                     f"sudo iptables -t nat -A PREROUTING -d {external_ip} -p tcp --dport {current_port} -j DNAT --to-destination {local_ip}:{service_port}",
-                    f"sudo iptables -t nat -A POSTROUTING -d {local_ip} -p tcp --dport {service_port} -j SNAT --to-source {internal_ip}"
+                    f"sudo iptables -t nat -A POSTROUTING -d {local_ip} -p tcp --dport {service_port} -j SNAT --to-source {internal_ip}",
+                    f"sudo iptables-save >{firewall_conf}"
                 ]
 
-                if check_forward_rule(external_iface, internal_iface) == False:
+                if func.check_forward_rule(external_iface, internal_iface) == False:
                     commands.append(f"sudo iptables -A FORWARD -i {external_iface} -o {internal_iface} -j ACCEPT")
 
                 for command in commands:
-                    execute_command(command)
+                    func.execute_command(command)
 
             if camera:
                 logger.info(f'Camera with id {id} was successfully updated')
@@ -251,46 +241,6 @@ def add_camera():
             return redirect(url_for('show_cameras'))
 
         return render_template('add_camera.html', camera=camera, group=current_user.user_group, interfaces=interfaces)
-
-def execute_command(command):
-    try:
-        subprocess.run(command, check=True, shell=True)
-    except subprocess.CalledProcessError as e:
-        flash(f"Error executing command: {e}")
-        return False
-    return True
-
-
-def check_forward_rule(external_iface, internal_iface):
-    try:
-        result = subprocess.run(
-            ["sudo", "iptables", "-L", "FORWARD", "-v", "-n"],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            print(f"Error iptables: {result.stderr}")
-            return False
-        rules = result.stdout
-        for line in rules.splitlines():
-            if external_iface in line and internal_iface in line:
-                return True
-        return False
-    except Exception as e:
-        print(f"Error: {e}")
-        return False
-
-
-def get_interface_ip(interface_name):
-    if ni.AF_INET in ni.ifaddresses(interface_name):
-        return ni.ifaddresses(interface_name)[ni.AF_INET][0]['addr']
-    else:
-        return None
-
-def get_network_interfaces():
-    interfaces = ni.interfaces()
-    return interfaces
-
 
 @app.route('/delete_camera/<int:id>', methods=['GET', 'POST'])
 @login_required
@@ -313,7 +263,7 @@ def delete_camera(id):
             local_ip = camera['local_ip']
             service_port = camera['service_port']
             current_port = external_access['access_port']
-            remove_iptables_rules(external_iface, internal_iface, local_ip, service_port, current_port)
+            func.remove_iptables_rules(external_iface, internal_iface, local_ip, service_port, current_port)
 
         db.execute('DELETE FROM ip_cameras WHERE id = ?', (id,))
         db.execute('DELETE FROM external_access WHERE camera_id = ?', (id,))
@@ -321,22 +271,6 @@ def delete_camera(id):
         logger.info(f'Camera was successfully deleted')
         flash('Camera was successfully deleted')
         return redirect(url_for('show_cameras'))
-
-
-def remove_iptables_rules(external_iface, internal_iface, local_ip, service_port, current_port):
-    external_ip = get_interface_ip(external_iface)
-    internal_ip = get_interface_ip(internal_iface)
-
-    if not external_ip or not internal_ip:
-        return
-
-    commands = [
-        f"sudo iptables -t nat -D PREROUTING -d {external_ip} -p tcp --dport {current_port} -j DNAT --to-destination {local_ip}:{service_port}",
-        f"sudo iptables -t nat -D POSTROUTING -d {local_ip} -p tcp --dport {service_port} -j SNAT --to-source {internal_ip}"
-    ]
-
-    for command in commands:
-        execute_command(command)
 
 @app.route('/open_camera/<int:id>', methods=['GET', 'POST'])
 @login_required
