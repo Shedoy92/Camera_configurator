@@ -2,11 +2,30 @@ import datetime
 import sqlite3
 import webbrowser
 import func
-import config
+import os
 import logger_config
-from flask import request, g, redirect, url_for, render_template, flash
-from flask_login import UserMixin, login_user, login_required, logout_user, current_user
+from flask import Flask, request, g, redirect, url_for, render_template, flash
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+app = Flask(__name__)
+app.config.from_object(__name__)
+
+app.wsgi_app = ProxyFix(
+    app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
+)
+
+app.config.update(dict(
+    DATABASE=os.path.join(app.root_path, 'awesome.db'),
+    DEBUG=True,
+    SECRET_KEY="ararablyat"
+))
+app.config.from_envvar('USERS_SETTINGS', silent=True)
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 
 firewall_conf="/etc/iptables/firewall.conf"
 
@@ -18,7 +37,7 @@ class User(UserMixin):
         self.user_group = user_group
 
 def connect_db():
-    rv = sqlite3.connect(config.app.config['DATABASE'])
+    rv = sqlite3.connect(app.config['DATABASE'])
     rv.row_factory = sqlite3.Row
     return rv
 
@@ -27,19 +46,19 @@ def get_db():
         g.sqlite_db = connect_db()
     return g.sqlite_db
 
-@config.app.teardown_appcontext
+@app.teardown_appcontext
 def close_db(error):
     if hasattr(g, 'sqlite_db'):
         g.sqlite_db.close()
 
 def init_db():
-    with config.app.app_context():
+    with app.app_context():
         db = get_db()
-        with config.app.open_resource('schema.sql', mode='r') as f:
+        with app.open_resource('schema.sql', mode='r') as f:
             db.cursor().executescript(f.read())
         db.commit()
 
-@config.login_manager.user_loader
+@login_manager.user_loader
 def load_user(user_id):
     db = get_db()
     cur = db.execute('select id, username, password, user_group from users where id = ?', [user_id])
@@ -48,7 +67,7 @@ def load_user(user_id):
         return User(user_data['id'], user_data['username'], user_data['password'], user_data['user_group'])
     return None
 
-@config.app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['GET', 'POST'])
 def login():
     error = None
     if request.method == 'POST':
@@ -78,7 +97,7 @@ def login():
             error = 'Invalid username or password'
     return render_template('login.html', error=error)
 
-@config.app.route('/logout')
+@app.route('/logout')
 @login_required
 def logout():
     logger_config.logger.info(f'User {current_user.username} logged out')
@@ -86,7 +105,7 @@ def logout():
     flash('You were logged out')
     return redirect(url_for('login'))
 
-@config.app.route('/')
+@app.route('/')
 @login_required
 def show_cameras():
     db = get_db()
@@ -111,7 +130,7 @@ def show_cameras():
     cameras = cur.fetchall()
     return render_template('show_cameras.html', cameras=cameras, group=current_user.user_group)
 
-@config.app.route('/add_camera', methods=['GET', 'POST'])
+@app.route('/add_camera', methods=['GET', 'POST'])
 @login_required
 def add_camera():
     if current_user.user_group != 'admin':
@@ -219,7 +238,7 @@ def add_camera():
 
         return render_template('add_camera.html', camera=camera, group=current_user.user_group, interfaces=interfaces)
 
-@config.app.route('/delete_camera/<int:id>', methods=['GET', 'POST'])
+@app.route('/delete_camera/<int:id>', methods=['GET', 'POST'])
 @login_required
 def delete_camera(id):
     if current_user.user_group != 'admin':
@@ -249,7 +268,7 @@ def delete_camera(id):
         flash('Camera was successfully deleted')
         return redirect(url_for('show_cameras'))
 
-@config.app.route('/open_camera/<int:id>', methods=['GET', 'POST'])
+@app.route('/open_camera/<int:id>', methods=['GET', 'POST'])
 @login_required
 def open_camera(id):
     db = get_db()
@@ -271,7 +290,7 @@ def open_camera(id):
 
     return redirect(url_for('show_cameras'))
 
-@config.app.route('/admin_user_manager', methods=['GET', 'POST'])
+@app.route('/admin_user_manager', methods=['GET', 'POST'])
 @login_required
 def admin_user_manager():
     if current_user.user_group != 'admin':
@@ -284,7 +303,7 @@ def admin_user_manager():
 
     return render_template('admin_user_manager.html', users_data=users_data)
 
-@config.app.route('/add_user', methods=['GET', 'POST'])
+@app.route('/add_user', methods=['GET', 'POST'])
 @login_required
 def add_user():
     if current_user.user_group != 'admin':
@@ -333,7 +352,7 @@ def add_user():
 
     return render_template('add_user.html', user=user)
 
-@config.app.route('/delete_user/<int:id>', methods=['GET', 'POST'])
+@app.route('/delete_user/<int:id>', methods=['GET', 'POST'])
 @login_required
 def delete_user(id):
     if current_user.user_group != 'admin':
@@ -351,5 +370,5 @@ def delete_user(id):
 
 if __name__ == '__main__':
     init_db()
-    config.app.run()
+    app.run()
 
