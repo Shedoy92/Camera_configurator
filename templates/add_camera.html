@@ -16,7 +16,7 @@
       <dd><input placeholder="e.g. 192.168.1.1" type=text size=30 name=local_ip required value="{{ camera.local_ip if camera else '' }}">
 
       <dt>Network Mask:
-      <dd><input placeholder="e.g. 24" type=text size=30 name=network_mask required value="{{ camera.network_mask if camera else '' }}">
+      <dd><input placeholder="e.g. 24" type=number min=0 max=32 size=30 name=network_mask required value="{{ camera.network_mask if camera else '' }}">
 
       <dt>Service Port:
       <dd><input type=number min=1 max=65535 name=service_port required value="{{ camera.service_port if camera else '' }}">
